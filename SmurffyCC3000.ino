@@ -1,6 +1,9 @@
+#include <avr/wdt.h>
 #include <Adafruit_CC3000.h>
 #include <ccspi.h>
 #include <SPI.h>
+#include <Wire.h>
+#include <LibHumidity.h>
 
 // CC3000 interrupt and control pins
 #define ADAFRUIT_CC3000_IRQ   3 // MUST be an interrupt pin!
@@ -27,6 +30,8 @@ unsigned long
 Adafruit_CC3000_Client
   client;        // For WiFi connections
 
+LibHumidity sht25 = LibHumidity(0);
+
 void setup(void) {
 
   uint32_t ip = 0L, t;
@@ -35,13 +40,6 @@ void setup(void) {
 
   Serial.print(F("Hello! Initializing CC3000..."));
   if(!cc3000.begin()) hang(F("failed. Check your wiring?"));
-
-/*
-  uint16_t firmware = checkFirmwareVersion();
-  if ((firmware != 0x113) && (firmware != 0x118)) {
-    hang(F("Wrong firmware version!"));
-  }
-*/
 
   Serial.print(F("OK\r\nDeleting old connection profiles..."));
   if(!cc3000.deleteProfiles()) hang(F("failed."));
@@ -70,12 +68,26 @@ void hang(const __FlashStringHelper *str) {
 uint8_t countdown = 23; // Countdown to next time server query (once per ~24hr)
 
 void loop() {
-  unsigned long t = millis();
+  // Start watchdog
+  wdt_enable(WDTO_8S); 
   
-  String data;
-  data = "{\"deviceID\":\"S001\", \"temperature\": \"29.28\", \"humidity\": \"80.45\"}";
+  unsigned long t = millis();
+  char deviceID[10] = "S001";
+  char tempF[5], humiF[5];
+
+  dtostrf(sht25.GetTemperatureC(),5,2,tempF);
+  dtostrf(sht25.GetHumidity(),5,2,humiF);
+  // Reset watchdog
+  wdt_reset();
+
+  char data[80];
+  sprintf(data, "{\"deviceID\": \"%s\", \"temperature\": \"%.5s\", \"humidity\": \"%.5s\"}", deviceID, tempF, humiF);
+  // Reset watchdog
+  wdt_reset();
   
   sendData(data);
+  // Reset watchdog
+  wdt_reset();
   
   if(!countdown) {        // 24 hours elapsed?
     if((t = getTime())) { // Synchronize time if server contacted
@@ -83,6 +95,9 @@ void loop() {
       countdown   = 23;   // and reset counter
     }
   } else countdown--;
+  // Reset watchdog & disable
+  wdt_reset();
+  wdt_disable();
 }
 
 boolean sendData(String msg) { // 140 chars max! No checks made here.
@@ -95,23 +110,28 @@ boolean sendData(String msg) { // 140 chars max! No checks made here.
   Serial.print(F("OK\r\nConnecting to server..."));
   t = millis();
   do {
-    client = cc3000.connectTCP(ip, 49160);
+    client = cc3000.connectTCP(ip, 49161);
   } while((!client.connected()) &&
           ((millis() - t) < connectTimeout));
-
+  // Reset watchdog
+  wdt_reset();
+  
   if(client.connected()) { // Success!
 
     Serial.println(F("Issuing HTTP request..."));
     // Unlike the hash prep, parameters in the HTTP request don't require sorting.
     client.fastrprintln(F("POST /api/sensors HTTP/1.1"));
-    client.fastrprintln(F("Host: 128.199.246.241:49160"));
+    client.fastrprintln(F("Host: 128.199.246.241:49161"));
     client.fastrprintln(F("Content-Type: application/json"));
     client.fastrprint(F("Content-Length: "));
-    Serial.println(msg.length());
+    client.println(msg.length());
     client.fastrprintln(F(""));
-    Serial.println(F("Sending data..."));
-    client.println(msg);
-
+    Serial.print(F("Sending data..."));
+    //client.println(msg);
+    sendMessage(msg);
+    client.fastrprintln(F(""));
+    Serial.println(F("success"));
+  
     Serial.print(F("OK\r\nAwaiting response..."));
     int c = 0;
     // Dirty trick: instead of parsing results, just look for opening
@@ -122,9 +142,23 @@ boolean sendData(String msg) { // 140 chars max! No checks made here.
     else           Serial.println(F("error (invalid Twitter credentials?)"));
     client.close();
     return (c == '{');
+    // Reset watchdog
+    wdt_reset();
   } else { // Couldn't contact server
     Serial.println(F("failed"));
     return false;
+  }
+}
+
+void sendMessage(String input) {
+  unsigned const int chunkSize = 20;
+  // Get String length
+  int length = input.length();
+  int max_iteration = (int)(length/chunkSize);
+  
+  for (int i = 0; i < length; i++) {
+    client.print(input.substring(i*chunkSize, (i+1)*chunkSize));
+    wdt_reset();
   }
 }
 
