@@ -16,8 +16,8 @@ Adafruit_CC3000 cc3000 = Adafruit_CC3000(
   SPI_CLOCK_DIVIDER);
 
 // WiFi access point credentials
-#define WLAN_SSID     "Dolphin"  // 32 characters max
-#define WLAN_PASS     "BaDo2206@"
+#define WLAN_SSID     "WirelessName"  // 32 characters max
+#define WLAN_PASS     "WirelessPassword"
 #define WLAN_SECURITY WLAN_SEC_WPA2 // WLAN_SEC_UNSEC/WLAN_SEC_WEP/WLAN_SEC_WPA/WLAN_SEC_WPA2
 
 const unsigned long
