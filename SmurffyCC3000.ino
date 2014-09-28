@@ -41,8 +41,10 @@ void setup(void) {
   Serial.print(F("Hello! Initializing CC3000..."));
   if(!cc3000.begin()) hang(F("failed. Check your wiring?"));
 
+/*
   Serial.print(F("OK\r\nDeleting old connection profiles..."));
   if(!cc3000.deleteProfiles()) hang(F("failed."));
+*/
 
   Serial.print(F("OK\r\nConnecting to network..."));
   /* NOTE: Secure connections are not available in 'Tiny' mode! */
